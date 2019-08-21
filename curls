@@ -1,0 +1,12 @@
+echo -e "\n#####  HTTP Request ##########"
+curl -v  http://127.0.0.1:8080/whatever
+echo -e "\n\n#####  HTTP/2 Request ##########"
+curl -v  http://127.0.0.1:8080/whatever  --http2
+echo -e "\n\n#####  HTTP/2-PRI Request ##########"
+curl -v  http://127.0.0.1:8080/whatever  --http2-prior-knowledge
+echo -e "\n\n#####  HTTP POST  ##########"
+curl -v -XPOST -d data http://127.0.0.1:8080/whatever
+echo -e "\n\n#####  HTTP/2 POST  ##########"
+curl -v -XPOST -d data http://127.0.0.1:8080/whatever --http2
+echo -e "\n\n#####  HTTP/2-PRI POST  ##########"
+curl -v -XPOST -d data http://127.0.0.1:8080/whatever --http2-prior-knowledge

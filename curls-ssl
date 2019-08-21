@@ -1,0 +1,8 @@
+echo -e "\n#####  HTTP Request ##########"
+curl -v  -k https://127.0.0.1:8443/whatever
+echo -e "\n\n#####  HTTP/2 Request ##########"
+curl -v  -k https://127.0.0.1:8443/whatever  --http2
+echo -e "\n\n#####  HTTP POST  ##########"
+curl -v -k -XPOST -d data https://127.0.0.1:8443/whatever
+echo -e "\n\n#####  HTTP/2 POST  ##########"
+curl -v -k -XPOST -d data https://127.0.0.1:8443/whatever --http2

@@ -14,18 +14,13 @@
  */
 package io.netty.example.http2.helloworld.client;
 
-import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpClientUpgradeHandler;
-import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http2.DefaultHttp2Connection;
 import io.netty.handler.codec.http2.DelegatingDecompressorFrameListener;
 import io.netty.handler.codec.http2.Http2ClientUpgradeCodec;
@@ -38,8 +33,6 @@ import io.netty.handler.ssl.ApplicationProtocolNames;
 import io.netty.handler.ssl.ApplicationProtocolNegotiationHandler;
 import io.netty.handler.ssl.SslContext;
 
-import java.net.InetSocketAddress;
-
 import static io.netty.handler.logging.LogLevel.INFO;
 
 /**
@@ -50,13 +43,14 @@ public class Http2ClientInitializer extends ChannelInitializer<SocketChannel> {
 
     private final SslContext sslCtx;
     private final int maxContentLength;
+    private final boolean skipUpgrade;
     private HttpToHttp2ConnectionHandler connectionHandler;
     private HttpResponseHandler responseHandler;
-    private Http2SettingsHandler settingsHandler;
 
-    public Http2ClientInitializer(SslContext sslCtx, int maxContentLength) {
+    Http2ClientInitializer(SslContext sslCtx, int maxContentLength, boolean priorKnowledge) {
         this.sslCtx = sslCtx;
         this.maxContentLength = maxContentLength;
+        this.skipUpgrade = priorKnowledge;
     }
 
     @Override
@@ -73,24 +67,28 @@ public class Http2ClientInitializer extends ChannelInitializer<SocketChannel> {
                 .connection(connection)
                 .build();
         responseHandler = new HttpResponseHandler();
-        settingsHandler = new Http2SettingsHandler(ch.newPromise());
         if (sslCtx != null) {
             configureSsl(ch);
         } else {
-            configureClearText(ch);
+            if (!skipUpgrade) {
+                configureClearTextUpgrade(ch);
+            } else {
+                configurePriorKnowledge(ch);
+            }
         }
     }
 
-    public HttpResponseHandler responseHandler() {
+    private void configurePriorKnowledge(SocketChannel ch) {
+        ch.pipeline().addLast(connectionHandler, new UserEventLogger());
+        configureEndOfPipeline(ch.pipeline());
+    }
+
+    HttpResponseHandler responseHandler() {
         return responseHandler;
     }
 
-    public Http2SettingsHandler settingsHandler() {
-        return settingsHandler;
-    }
-
-    protected void configureEndOfPipeline(ChannelPipeline pipeline) {
-        pipeline.addLast(settingsHandler, responseHandler);
+    private void configureEndOfPipeline(ChannelPipeline pipeline) {
+        pipeline.addLast(responseHandler);
     }
 
     /**
@@ -99,8 +97,6 @@ public class Http2ClientInitializer extends ChannelInitializer<SocketChannel> {
     private void configureSsl(SocketChannel ch) {
         ChannelPipeline pipeline = ch.pipeline();
         pipeline.addLast(sslCtx.newHandler(ch.alloc()));
-        // We must wait for the handshake to finish and the protocol to be negotiated before configuring
-        // the HTTP/2 components of the pipeline.
         pipeline.addLast(new ApplicationProtocolNegotiationHandler("") {
             @Override
             protected void configurePipeline(ChannelHandlerContext ctx, String protocol) {
@@ -119,44 +115,14 @@ public class Http2ClientInitializer extends ChannelInitializer<SocketChannel> {
     /**
      * Configure the pipeline for a cleartext upgrade from HTTP to HTTP/2.
      */
-    private void configureClearText(SocketChannel ch) {
+    private void configureClearTextUpgrade(SocketChannel ch) {
         HttpClientCodec sourceCodec = new HttpClientCodec();
         Http2ClientUpgradeCodec upgradeCodec = new Http2ClientUpgradeCodec(connectionHandler);
         HttpClientUpgradeHandler upgradeHandler = new HttpClientUpgradeHandler(sourceCodec, upgradeCodec, 65536);
-
         ch.pipeline().addLast(sourceCodec,
-                              upgradeHandler,
-                              new UpgradeRequestHandler(),
-                              new UserEventLogger());
-    }
-
-    /**
-     * A handler that triggers the cleartext upgrade to HTTP/2 by sending an initial HTTP request.
-     */
-    private final class UpgradeRequestHandler extends ChannelInboundHandlerAdapter {
-
-        @Override
-        public void channelActive(ChannelHandlerContext ctx) throws Exception {
-            DefaultFullHttpRequest upgradeRequest =
-                    new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/", Unpooled.EMPTY_BUFFER);
-
-            // Set HOST header as the remote peer may require it.
-            InetSocketAddress remote = (InetSocketAddress) ctx.channel().remoteAddress();
-            String hostString = remote.getHostString();
-            if (hostString == null) {
-                hostString = remote.getAddress().getHostAddress();
-            }
-            upgradeRequest.headers().set(HttpHeaderNames.HOST, hostString + ':' + remote.getPort());
-
-            ctx.writeAndFlush(upgradeRequest);
-
-            ctx.fireChannelActive();
-
-            // Done with this handler, remove it from the pipeline.
-            ctx.pipeline().remove(this);
-
-            configureEndOfPipeline(ctx.pipeline());
-        }
+                upgradeHandler,
+                new UserEventLogger());
+        configureEndOfPipeline(ch.pipeline());
     }
 
     /**
@@ -164,7 +130,7 @@ public class Http2ClientInitializer extends ChannelInitializer<SocketChannel> {
      */
     private static class UserEventLogger extends ChannelInboundHandlerAdapter {
         @Override
-        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
             System.out.println("User Event Triggered: " + evt);
             ctx.fireUserEventTriggered(evt);
         }

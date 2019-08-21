@@ -94,6 +94,12 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-tcnative-boringssl-static</artifactId>
+      <version>2.0.25.Final</version>
+      <classifier>linux-x86_64</classifier>
+    </dependency>
+    <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>netty-codec-stomp</artifactId>
       <version>${project.version}</version>
@@ -153,7 +159,7 @@
       <artifactId>logback-classic</artifactId>
       <scope>runtime</scope>
     </dependency>
-    
+
     <!-- Needed for OCSP -->
     <dependency>
       <groupId>org.bouncycastle</groupId>
@@ -173,6 +179,19 @@
 
   <build>
     <plugins>
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.5.1</version>
+        <configuration>
+          <compilerVersion>1.8</compilerVersion>
+          <source>1.8</source>
+          <target>1.8</target>
+          <optimize>true</optimize>
+          <showDeprecation>true</showDeprecation>
+          <showWarnings>true</showWarnings>
+          <compilerArgument>-Xlint:-options</compilerArgument>
+        </configuration>
+      </plugin>
       <!-- run-example.sh invokes this plugin to launch an example. -->
       <plugin>
         <groupId>kr.motd.maven</groupId>
